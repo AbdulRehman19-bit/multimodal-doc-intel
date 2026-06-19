@@ -1,0 +1,38 @@
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# Settings
+pydantic-settings==2.4.0
+pydantic==2.8.2
+
+# Supabase
+supabase==2.7.4
+
+# JWT verification
+PyJWT==2.9.0
+
+# ColPali visual embeddings (the core differentiator)
+byaldi==0.0.6
+torch==2.4.1
+torchvision==0.19.1
+
+# FAISS for vector similarity search (CPU build — free, no GPU needed)
+faiss-cpu==1.8.0
+
+# PDF rendering
+pdf2image==1.17.0
+Pillow==10.4.0
+
+# Gemini (free tier: 15 req/min, 1M tokens/day)
+google-generativeai==0.7.2
+
+# LangSmith observability (free tier: 1000 traces/month)
+langsmith==0.1.120
+
+# HTTP client (for fetching page images)
+httpx==0.27.2
+
+# Utilities
+python-jose[cryptography]==3.3.0
