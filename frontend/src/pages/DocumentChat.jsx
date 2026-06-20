@@ -78,4 +78,3 @@ export default function DocumentChat() {
     </div>
   )
 }
-export default DocumentChat
