@@ -3,7 +3,7 @@ import io
 import httpx
 from PIL import Image
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from langsmith import traceable
 
@@ -13,7 +13,7 @@ from app.models.query import (
     MultiDocQueryRequest, MultiDocQueryResponse,
     EvalRequest, EvalResult,
 )
-from app.core.colpali_engine import colpali_engine
+
 from app.core.gemini_client import gemini_client
 from app.core.evaluator import evaluator
 from app.services.document_service import document_service

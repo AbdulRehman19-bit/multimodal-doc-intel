@@ -96,7 +96,6 @@ class RAGEvaluator:
         )
 
         from sklearn.metrics.pairwise import cosine_similarity
-        import numpy as np
 
         scores = cosine_similarity(sentence_embs, context_emb)
         # A sentence is "faithful" if similarity > 0.5

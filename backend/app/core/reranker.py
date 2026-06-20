@@ -1,5 +1,4 @@
 import asyncio
-from typing import Optional
 
 from app.core.langsmith_tracer import traced
 
