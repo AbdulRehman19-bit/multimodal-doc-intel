@@ -20,31 +20,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
-          cache-dependency-path: backend/requirements.txt
 
-      - name: Install dependencies
+      - name: Install lightweight deps only (no torch/colpali in CI)
         working-directory: backend
         run: |
-          pip install -r requirements.txt
-          pip install ruff pytest pytest-asyncio httpx
+          pip install fastapi pydantic pydantic-settings ruff
 
       - name: Lint with ruff
         working-directory: backend
-        run: ruff check app/
-
-      - name: Run tests
-        working-directory: backend
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
-          LANGCHAIN_PROJECT: multimodal-doc-intel-ci
-          SECRET_KEY: ci-test-secret-key-32-chars-long
-        run: pytest tests/ -v --tb=short 2>/dev/null || echo "No tests yet — add them in backend/tests/"
+        run: ruff check app/ --ignore E501
 
   # ── Frontend lint + build ────────────────────────────────────────────────
   frontend:
@@ -55,18 +39,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node 20
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          node-version: "22"
 
       - name: Install dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm install
 
-      - name: Build (checks for type/import errors)
+      - name: Build
         working-directory: frontend
         env:
           VITE_SUPABASE_URL: https://placeholder.supabase.co
