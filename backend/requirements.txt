@@ -14,12 +14,15 @@ supabase==2.7.4
 # JWT verification
 PyJWT==2.9.0
 
-# ColPali visual embeddings
-byaldi==0.0.6
+# IMPORTANT: Install CPU torch BEFORE running pip install -r requirements.txt
+# pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu
 torch==2.4.1
 torchvision==0.19.1
 
-# FAISS vector search (CPU — no GPU needed)
+# CRITICAL: pin numpy<2 before faiss — numpy 2.x breaks faiss-cpu
+numpy<2
+
+# FAISS vector search (CPU build)
 faiss-cpu==1.8.0
 
 # PDF rendering + text extraction
@@ -27,13 +30,16 @@ pdf2image==1.17.0
 Pillow==10.4.0
 pdfplumber==0.11.4
 
+# ColPali visual embeddings
+byaldi==0.0.6
+
 # Gemini (free: 15 req/min, 1M tokens/day)
 google-generativeai==0.7.2
 
 # Hybrid retrieval — BM25
 rank-bm25==0.2.2
 
-# Reranking — cross-encoder (runs on CPU, ~22MB download)
+# Reranking + evaluation (cross-encoder runs on CPU)
 sentence-transformers==3.1.1
 
 # Evaluation metrics

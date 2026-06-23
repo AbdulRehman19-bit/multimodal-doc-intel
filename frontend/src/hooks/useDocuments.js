@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../lib/supabase'
 import api from '../lib/api'
 import toast from 'react-hot-toast'
 
@@ -9,10 +10,17 @@ export function useDocuments() {
   const fetchDocuments = useCallback(async () => {
     try {
       setLoading(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setLoading(false)
+        return
+      }
       const { data } = await api.get('/documents/')
       setDocuments(data.documents)
     } catch (err) {
-      toast.error('Failed to load documents.')
+      if (err.response?.status !== 401) {
+        toast.error('Failed to load documents.')
+      }
     } finally {
       setLoading(false)
     }
@@ -25,7 +33,6 @@ export function useDocuments() {
   const uploadDocument = async (file) => {
     const formData = new FormData()
     formData.append('file', file)
-
     const toastId = toast.loading(`Uploading ${file.name}...`)
     try {
       const { data } = await api.post('/documents/upload', formData, {
@@ -59,7 +66,10 @@ export function useDocuments() {
           if (data.indexed) {
             clearInterval(interval)
             setDocuments((prev) =>
-              prev.map((d) => (d.id === documentId ? { ...d, indexed: true, page_count: data.page_count } : d))
+              prev.map((d) => d.id === documentId
+                ? { ...d, indexed: true, page_count: data.page_count }
+                : d
+              )
             )
             resolve(data)
           }
@@ -67,7 +77,7 @@ export function useDocuments() {
           clearInterval(interval)
           resolve(null)
         }
-      }, 3000) // poll every 3 seconds
+      }, 3000)
     })
   }
 

@@ -9,12 +9,12 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
     supabase_jwt_secret: str
 
-    # Gemini
-    gemini_api_key: str
+    # Groq (replaces Gemini)
+    groq_api_key: str
 
     # LangSmith
-    langchain_tracing_v2: bool = True
-    langchain_api_key: str
+    langchain_tracing_v2: bool = False
+    langchain_api_key: str = ""
     langchain_project: str = "multimodal-doc-intel"
 
     # App
@@ -23,8 +23,9 @@ class Settings(BaseSettings):
     secret_key: str
     environment: str = "development"
 
-    # ColPali model — using free open-source checkpoint
+    # ColPali
     colpali_model_name: str = "vidore/colpali-v1.2"
+    colpali_device: str = "cpu"
 
     # Storage
     document_bucket: str = "documents"

@@ -111,16 +111,17 @@ async def get_index_status(
     document_id: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    """
-    Poll this endpoint after upload to know when indexing is done.
-    Frontend polls every 3s until indexed=true, then enables the chat.
-    """
     payload = await verify_supabase_token(credentials=credentials)
     user_id = get_user_id(payload)
 
     doc = await document_service.get_document(document_id, user_id)
     if not doc:
-        raise HTTPException(status_code=404, detail="Document not found.")
+        return IndexStatusResponse(
+            document_id=document_id,
+            indexed=False,
+            page_count=None,
+            message="Document not found.",
+        )
 
     indexed = colpali_engine.index_exists(document_id)
     return IndexStatusResponse(
@@ -129,7 +130,6 @@ async def get_index_status(
         page_count=doc.page_count,
         message="Ready to query." if indexed else "Indexing in progress...",
     )
-
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(

@@ -1,13 +1,16 @@
 import os
 import pickle
+import contextlib
 import numpy as np
 from pathlib import Path
 from PIL import Image
 from typing import Optional
 
+# Force CPU before importing anything torch-related
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 import torch
 import faiss
-from byaldi import RAGMultiModalModel
 
 from app.config import get_settings
 
@@ -16,61 +19,71 @@ settings = get_settings()
 
 class ColPaliEngine:
     """
-    ColPali-based visual document retrieval engine.
+    ColPali-based visual document retrieval engine — CPU optimized.
 
-    How it works:
-    1. Each PDF page is rendered as an image (via PDFProcessor)
-    2. ColPali encodes each page image into a dense embedding vector
-       — it reads tables, charts, handwriting visually, no OCR needed
-    3. Embeddings are stored in a FAISS index (per document)
-    4. At query time, the question is also embedded and nearest-neighbor
-       search returns the top-k most relevant page images
-    5. Those page images go to Gemini for visual question answering
-
-    This is the key architectural difference vs standard RAG:
-    standard RAG: PDF → extract text → chunk → embed text → retrieve text
-    ColPali RAG:  PDF → render pages → embed images → retrieve images → VQA
+    Key CPU optimizations:
+    1. Cast model to float32 after load (bfloat16 has no CPU hardware acceleration)
+    2. Patch _attn_implementation to 'eager' to avoid SDPA bfloat16 mask conflicts
+    3. Resize pages to 448x448 before encoding (ColPali's native resolution)
+    4. Cast all non-input_ids tensors to float32
+    5. Use torch.inference_mode() (faster than no_grad on CPU)
+    6. Print per-page progress so you can see it's working
     """
 
     def __init__(self):
-        self.model: Optional[RAGMultiModalModel] = None
+        self._rag = None
+        self._colpali = None
+        self._processor = None
+        self._device = settings.colpali_device
         self._index_cache: dict[str, faiss.Index] = {}
         self._page_map_cache: dict[str, list[int]] = {}
         os.makedirs(settings.index_storage_path, exist_ok=True)
 
     def _load_model(self):
-        """Lazy-load ColPali — heavy model, load once and keep in memory."""
-        if self.model is None:
-            print(f"Loading ColPali model: {settings.colpali_model_name}")
-            self.model = RAGMultiModalModel.from_pretrained(
-                settings.colpali_model_name
+        if self._rag is None:
+            from byaldi import RAGMultiModalModel
+            print(f"Loading ColPali model on device: {self._device}")
+
+            self._rag = RAGMultiModalModel.from_pretrained(
+                settings.colpali_model_name,
+                device=self._device,
+                verbose=0,
             )
-            print("ColPali model loaded.")
+
+            self._colpali = self._rag.model.model
+            self._processor = self._rag.model.processor
+
+            if self._device == "cpu":
+                # Cast all parameters to float32 — bfloat16 has no CPU hardware acceleration
+                self._colpali = self._colpali.float()
+
+                # Patch every submodule to use eager attention instead of SDPA.
+                # SDPA internally generates a bfloat16 causal mask regardless of
+                # model dtype, causing a dtype mismatch with our float32 queries.
+                for module in self._colpali.modules():
+                    if hasattr(module, "config") and hasattr(module.config, "_attn_implementation"):
+                        module.config._attn_implementation = "eager"
+
+            self._colpali.eval()
+            print("ColPali model loaded and ready.")
 
     def build_index(
         self,
         document_id: str,
         page_images: list[Image.Image],
     ) -> str:
-        """
-        Build a FAISS index from a list of page images for one document.
-        Returns the path where the index is saved.
-        """
         self._load_model()
 
-        # Encode all pages into embeddings
-        # ColPali returns shape (num_pages, embedding_dim)
+        print(f"Building index for {len(page_images)} pages...")
         embeddings = self._encode_images(page_images)
+        print(f"All pages encoded. Embedding shape: {embeddings.shape}")
 
-        # Build a flat L2 FAISS index
         dim = embeddings.shape[1]
         index = faiss.IndexFlatL2(dim)
         index.add(embeddings.astype(np.float32))
 
-        # Page map: index position → page number (1-based)
         page_map = list(range(1, len(page_images) + 1))
 
-        # Persist to disk
         index_path = self._get_index_path(document_id)
         faiss.write_index(index, str(index_path))
 
@@ -78,10 +91,10 @@ class ColPaliEngine:
         with open(map_path, "wb") as f:
             pickle.dump(page_map, f)
 
-        # Cache in memory for fast subsequent queries
         self._index_cache[document_id] = index
         self._page_map_cache[document_id] = page_map
 
+        print(f"Index saved to {index_path}")
         return str(index_path)
 
     def query_index(
@@ -90,19 +103,13 @@ class ColPaliEngine:
         question: str,
         top_k: int = 3,
     ) -> list[tuple[int, float]]:
-        """
-        Retrieve the top-k most relevant pages for a question.
-        Returns list of (page_number, score) tuples.
-        """
         self._load_model()
 
         index = self._load_index(document_id)
         page_map = self._load_page_map(document_id)
 
-        # Encode the question as a query embedding
         query_embedding = self._encode_query(question)
 
-        # Search FAISS
         k = min(top_k, index.ntotal)
         distances, indices = index.search(
             query_embedding.astype(np.float32), k
@@ -113,33 +120,63 @@ class ColPaliEngine:
             if idx == -1:
                 continue
             page_number = page_map[idx]
-            # Convert L2 distance to a 0-1 relevance score
             score = float(1 / (1 + dist))
             results.append((page_number, score))
 
         return results
 
     def _encode_images(self, images: list[Image.Image]) -> np.ndarray:
-        """Encode a list of PIL images using ColPali's image encoder."""
         embeddings = []
-        for image in images:
-            # byaldi handles tokenization and forward pass internally
-            emb = self.model.encode_image(image)
-            if isinstance(emb, torch.Tensor):
-                emb = emb.cpu().detach().numpy()
-            # Flatten if ColPali returns per-patch embeddings (mean pool)
-            if emb.ndim > 1:
-                emb = emb.mean(axis=0)
+
+        for i, image in enumerate(images):
+            print(f"  Encoding page {i + 1}/{len(images)}...")
+
+            image = image.resize((448, 448), Image.LANCZOS)
+            batch = self._processor.process_images([image])
+
+            # Cast everything to float32 except input_ids (must stay integer).
+            # attention_mask comes out as bfloat16 from the processor and must
+            # match query dtype — exclude only integer token id tensors.
+            batch = {
+                k: v.to(self._device).to(torch.float32) if k != "input_ids" else v.to(self._device)
+                for k, v in batch.items()
+            }
+
+            with torch.inference_mode():
+                output = self._colpali(**batch)
+
+            if isinstance(output, torch.Tensor):
+                emb = output
+            elif hasattr(output, "last_hidden_state"):
+                emb = output.last_hidden_state
+            else:
+                emb = output[0]
+
+            emb = emb.mean(dim=1).squeeze(0).float().cpu().numpy()
             embeddings.append(emb)
+            print(f"  Page {i + 1} done. Embedding dim: {emb.shape[0]}")
+
         return np.array(embeddings)
 
     def _encode_query(self, question: str) -> np.ndarray:
-        """Encode a text query into the same embedding space as images."""
-        emb = self.model.encode_query(question)
-        if isinstance(emb, torch.Tensor):
-            emb = emb.cpu().detach().numpy()
-        if emb.ndim > 1:
-            emb = emb.mean(axis=0)
+        batch = self._processor.process_queries([question])
+
+        batch = {
+            k: v.to(self._device).to(torch.float32) if k != "input_ids" else v.to(self._device)
+            for k, v in batch.items()
+        }
+
+        with torch.inference_mode():
+            output = self._colpali(**batch)
+
+        if isinstance(output, torch.Tensor):
+            emb = output
+        elif hasattr(output, "last_hidden_state"):
+            emb = output.last_hidden_state
+        else:
+            emb = output[0]
+
+        emb = emb.mean(dim=1).squeeze(0).float().cpu().numpy()
         return np.array([emb])
 
     def _load_index(self, document_id: str) -> faiss.Index:

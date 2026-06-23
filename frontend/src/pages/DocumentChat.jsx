@@ -10,6 +10,9 @@ export default function DocumentChat() {
   const navigate = useNavigate()
   const [doc, setDoc] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // useQuery lives here — passes state down to ChatPanel as props
+  // This is the correct pattern — ChatPanel is a pure presentational component
   const { messages, querying, sendQuery } = useQuery()
 
   useEffect(() => {
@@ -48,7 +51,9 @@ export default function DocumentChat() {
           <div className="w-6 h-6 bg-gray-800 rounded-md flex items-center justify-center">
             <FileText className="w-3 h-3 text-gray-400" />
           </div>
-          <span className="text-white text-sm font-medium truncate flex-1">{doc?.filename}</span>
+          <span className="text-white text-sm font-medium truncate flex-1">
+            {doc?.filename}
+          </span>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {doc?.indexed ? (
               <>
@@ -65,7 +70,7 @@ export default function DocumentChat() {
         </div>
       </header>
 
-      {/* Chat */}
+      {/* Chat — passes all state as props, no hooks inside ChatPanel */}
       <div className="flex-1 overflow-hidden max-w-5xl w-full mx-auto">
         <ChatPanel
           documentId={id}

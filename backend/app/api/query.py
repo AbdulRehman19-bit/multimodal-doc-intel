@@ -176,17 +176,22 @@ async def evaluate_query(
 
 # ── Shared helpers ─────────────────────────────────────────────────────────
 
-@traceable(name="gemini_vqa", tags=["vqa", "gemini"])
+@traceable(name="groq_vqa", tags=["vqa", "groq"])
 async def _gemini_vqa(
-    question: str, page_images: list[Image.Image], retrieved: list[dict]
+    question: str,
+    page_images: list[Image.Image],
+    retrieved: list[dict],
 ) -> str:
     page_numbers = [r["page_number"] for r in retrieved]
+    page_texts = [r.get("page_text", "") for r in retrieved]
+
     return await asyncio.get_event_loop().run_in_executor(
         None,
         gemini_client.answer_with_pages,
         question,
         page_images,
         page_numbers,
+        page_texts,
     )
 
 

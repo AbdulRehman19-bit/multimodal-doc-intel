@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { Send, Loader2, Bot, User, AlertCircle } from 'lucide-react'
 import PageViewer from './PageViewer'
 import TracePanel from './TracePanel'
@@ -31,7 +31,6 @@ function Message({ msg }) {
     )
   }
 
-  // Assistant message
   return (
     <div className="flex items-start gap-3">
       <div className="w-7 h-7 bg-brand-500/20 rounded-full flex items-center justify-center flex-shrink-0">
@@ -50,9 +49,10 @@ function Message({ msg }) {
   )
 }
 
-export default function ChatPanel({ documentId, indexed }) {
+// Props received from DocumentChat:
+// documentId, indexed, messages, querying, sendQuery
+export default function ChatPanel({ documentId, indexed, messages, querying, sendQuery }) {
   const [input, setInput] = useState('')
-  const { messages, querying, sendQuery } = require('../hooks/useQuery').useQuery()
   const bottomRef = useRef(null)
 
   useEffect(() => {

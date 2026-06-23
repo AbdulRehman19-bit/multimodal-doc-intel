@@ -6,7 +6,7 @@ export function useAuth() {
 
   useEffect(() => {
     initialize()
-  }, [])
+  }, [initialize])
 
   return { user, session, loading, signOut, isAuthenticated: !!user }
 }
